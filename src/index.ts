@@ -1,21 +1,34 @@
 // initializes three.js
 import * as THREE from 'three';
 
+// ----------- AUDIO STUFF ---------------
+
 // initializes the web audio api
 const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+
+// analyzer node that can be used to expose audio time and frequency data
 const analyser = audioContext.createAnalyser();
 
-// handling audio stuff
+// gets the element with audioInput ID in html
 const audioInput = document.getElementById('audioInput') as HTMLInputElement;
 
+// when user slects a file via audioInput element
 audioInput.addEventListener('change', async (event) => {
     const file = (event.target as HTMLInputElement).files?.[0];
+    
+    // if a file is selected, FileReader object is instantiated
     if (file) {
         const fileReader = new FileReader();
         fileReader.readAsArrayBuffer(file);
+
+        // decoding of the audio data
         fileReader.onload = async () => {
             const audioBuffer = await audioContext.decodeAudioData(fileReader.result as ArrayBuffer);
+            
+            // node that hosts the decoded audio data
             const source = audioContext.createBufferSource();
+
+            // routes audio to ensure playback
             source.buffer = audioBuffer;
             source.connect(analyser);
             analyser.connect(audioContext.destination);
@@ -24,13 +37,13 @@ audioInput.addEventListener('change', async (event) => {
     }
 });
 
+// frequency domain setup
 analyser.fftSize = 256;
 const bufferLength = analyser.frequencyBinCount;
 const dataArray = new Uint8Array(bufferLength); 
 
 
-
-
+// -------------- VISUAL STUFF ----------------
 
 // create a scene
 const scene = new THREE.Scene();
@@ -49,61 +62,69 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
 //create geometry and material
-const greenSphere = new THREE.SphereGeometry(1, 16, 16);
+const greenGeo = new THREE.SphereGeometry(1, 16, 16);
 
 const blueGeo = new THREE.SphereGeometry(0.5, 4, 4);
 
-const material = new THREE.MeshPhongMaterial({ color: 0x00ff00, wireframe: true });
+const greenMat = new THREE.MeshPhongMaterial({ color: 0x00ff00, wireframe: true });
 
-const newmat = new THREE.MeshPhongMaterial({ color: 0x00ffff, wireframe: true });
+const blueMat = new THREE.MeshPhongMaterial({ color: 0x00ffff, wireframe: true });
 
 // create a mesh from geometry and material
-const cube = new THREE.Mesh(greenSphere, material);
-cube.position.x = -1;
-cube.position.y = -1;
+const outer = new THREE.Mesh(greenGeo, greenMat);
 
-const sphere = new THREE.Mesh(blueGeo, newmat);
+const inner = new THREE.Mesh(blueGeo, blueMat);
 
-// new green mesh
-const newcube = new THREE.Mesh(greenSphere, material);
-newcube.position.x = 1;
-newcube.position.y = -1;
-scene.add(newcube);
 
-// shaft
-const newshaft = new THREE.Mesh(greenSphere, material);
-scene.add(newshaft);
-newshaft.position.y = 1;
 
 
 // add cube to the scene
-scene.add(cube);
-scene.add(sphere);
+scene.add(outer);
+scene.add(inner);
+
+
+
+let prevLowerAvg = 0;
+const threshold = 50; // adjustable value
+const decayRate = 0.95; // adjustable value
 
 // animation loop
 const animate = () => {
     requestAnimationFrame(animate);
 
-    // cube.rotation.x += 0.01;
-    cube.rotation.z += 0.002;
-    cube.rotation.y += 0.002;
-
-    newcube.rotation.z += -0.002;
-    newcube.rotation.y += -0.002;
-
-    newshaft.rotation.y += 0.005;
-
-    sphere.rotation.z += 0.004;
-    sphere.rotation.y += 0.004;
-
-
     analyser.getByteFrequencyData(dataArray);
-    const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
 
-    // cube.scale.set(1 + average / 256, 1 + average / 256, 1 + average / 256);
-    cube.scale.set(1 + average / 256, 1 + average / 256, 1 + average / 256);
-    newcube.scale.set(1 + average / 256, 1 + average / 256, 1 + average / 256);
-    newshaft.scale.set(0.7 + average / 256, 2 + average / 256, 1 + average / 256);
+    // segment dataArray for low and high frequencies
+    // const lowerHalfArray = dataArray.slice(0, (dataArray.length / 2) - 1);
+    const lowerHalfArray = dataArray.slice(1, 2);
+    const upperHalfArray = dataArray.slice(dataArray.length / 2, dataArray.length - 1);
+
+    // sub testing
+    // const lowerHalfArray = dataArray.slice(0, 5);
+
+    // calculate average frequency values for low and high frequencies
+    const lowerAvg = lowerHalfArray.reduce((a, b) => a + b) / lowerHalfArray.length;
+    const upperAvg = upperHalfArray.reduce((a, b) => a + b) / upperHalfArray.length;
+
+    // apply the values to outer and inner meshes
+    outer.scale.set(1 + upperAvg / 256, 1 + upperAvg / 256, 1 + upperAvg / 256);
+    inner.scale.set(1 + lowerAvg / 256, 1 + lowerAvg / 256, 1 + lowerAvg / 256);
+
+    // inner.scale.set(1 + lowerAvg / 1024, 1 + lowerAvg / 1024, 1 + lowerAvg / 1024);
+
+
+    outer.rotation.z += 0.002;
+    outer.rotation.y += 0.002;
+
+    inner.rotation.z += 0.004;
+    inner.rotation.y += 0.004;
+
+
+    // analyser.getByteFrequencyData(dataArray);
+    // const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+
+    // // cube.scale.set(1 + average / 256, 1 + average / 256, 1 + average / 256);
+    // outer.scale.set(1 + average / 256, 1 + average / 256, 1 + average / 256);
 
     renderer.render(scene, camera);
 };
