@@ -62,19 +62,18 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
 //create geometry and material
-const greenGeo = new THREE.SphereGeometry(1, 16, 16);
+const greenGeo = new THREE.SphereGeometry(1, 4, 4);
 
 const blueGeo = new THREE.SphereGeometry(0.5, 4, 4);
 
 const greenMat = new THREE.MeshPhongMaterial({ color: 0x00ff00, wireframe: true });
 
-const blueMat = new THREE.MeshPhongMaterial({ color: 0x00ffff, wireframe: true });
+const blueMat = new THREE.MeshPhongMaterial({ color: 0xff0000, wireframe: true });
 
 // create a mesh from geometry and material
 const outer = new THREE.Mesh(greenGeo, greenMat);
 
 const inner = new THREE.Mesh(blueGeo, blueMat);
-
 
 
 
@@ -85,8 +84,15 @@ scene.add(inner);
 
 
 let prevLowerAvg = 0;
-const threshold = 50; // adjustable value
-const decayRate = 0.95; // adjustable value
+const rateThreshold = 10; // threshold for rate of change
+
+
+// const threshold = 50; // adjustable value
+// const decayRate = 0.95; // adjustable value
+
+let currentScale = 1.0; // current scale of inner mesh
+let targetScale = 1.0; // scane we want to reach
+const lerpFactor = 0.1; //speed at which we lerp between currentScale and targetScale
 
 // animation loop
 const animate = () => {
@@ -95,24 +101,38 @@ const animate = () => {
     analyser.getByteFrequencyData(dataArray);
 
     // segment dataArray for low and high frequencies
-    // const lowerHalfArray = dataArray.slice(0, (dataArray.length / 2) - 1);
-    const lowerHalfArray = dataArray.slice(1, 2);
-    const upperHalfArray = dataArray.slice(dataArray.length / 2, dataArray.length - 1);
-
-    // sub testing
+    const lowerHalfArray = dataArray.slice(0, (dataArray.length / 2) - 1);
     // const lowerHalfArray = dataArray.slice(0, 5);
+    const upperHalfArray = dataArray.slice(dataArray.length / 2, dataArray.length - 1);
 
     // calculate average frequency values for low and high frequencies
     const lowerAvg = lowerHalfArray.reduce((a, b) => a + b) / lowerHalfArray.length;
     const upperAvg = upperHalfArray.reduce((a, b) => a + b) / upperHalfArray.length;
 
     // apply the values to outer and inner meshes
-    outer.scale.set(1 + upperAvg / 256, 1 + upperAvg / 256, 1 + upperAvg / 256);
-    inner.scale.set(1 + lowerAvg / 256, 1 + lowerAvg / 256, 1 + lowerAvg / 256);
+    const upperScale = 1 + upperAvg / 256;
+    outer.scale.set(upperScale, upperScale, upperScale);
+    // inner.scale.set(1 + lowerAvg / 256, 1 + lowerAvg / 256, 1 + lowerAvg / 256);
 
-    // inner.scale.set(1 + lowerAvg / 1024, 1 + lowerAvg / 1024, 1 + lowerAvg / 1024);
+    const rateOfChange = lowerAvg - prevLowerAvg;
+
+    // if we pass rate of change threshold
+    if (Math.abs(rateOfChange) > rateThreshold) {
+        targetScale = 1 + lowerAvg / 128;
+        console.log(rateOfChange);
+    } else {
+        targetScale  = 1.0 // reset to original scale
+    }
+
+    // lerp between currentScale and targetScale
+    currentScale += (targetScale - currentScale) * lerpFactor;
+
+    inner.scale.set(currentScale, currentScale, currentScale);
+
+    prevLowerAvg = lowerAvg;
 
 
+    // rotation that automatically occurs
     outer.rotation.z += 0.002;
     outer.rotation.y += 0.002;
 
