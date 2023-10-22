@@ -1,6 +1,10 @@
 // initializes three.js
 import * as THREE from 'three';
 
+// imports the visualizers from separate files
+// import { visualizerType1 } from './visualizerType1';
+// import { visualizerType2 } from './visualizerType2';
+
 // ----------- AUDIO STUFF ---------------
 
 // initializes the web audio api
@@ -38,12 +42,79 @@ audioInput.addEventListener('change', async (event) => {
 });
 
 // frequency domain setup
-analyser.fftSize = 256;
+analyser.fftSize = 1024;
 const bufferLength = analyser.frequencyBinCount;
 const dataArray = new Uint8Array(bufferLength); 
 
 
 // -------------- VISUAL STUFF ----------------
+
+let currentVisualizer: (() => void) | null = null;
+
+function visualizerType1() {
+    analyser.getByteFrequencyData(dataArray);
+
+    // segment dataArray for low and high frequencies
+    const upperHalfArray = dataArray.slice(dataArray.length / 2, dataArray.length - 1);
+    const bassBins = dataArray.slice(2, 5);
+    const bassLevel = bassBins.reduce((a, b) => a + b) / bassBins.length;
+
+
+    // calculate average frequency values for low and high frequencies
+    const upperAvg = upperHalfArray.reduce((a, b) => a + b) / upperHalfArray.length;
+    
+    // envelope follower for upperAvg
+    if (upperAvg > outerEnvelope) {
+        outerEnvelope = (1 - outerAttackRate * 2) * outerEnvelope + outerAttackRate * 2 * upperAvg;
+    } else {
+        outerEnvelope = (1 - outerReleaseRate * 2) * outerEnvelope;
+    }
+    
+    // damping when treble is not loud
+    if (outerEnvelope < outerFreqThreshold) {
+        outerEnvelope *= outerDampingFactor;
+    }
+    
+    let outerTargetScale = 1 + outerEnvelope / 256; // scaling factor can be adjusted
+    
+    
+    // envelope follower for bassLevel
+    if (bassLevel > envelope) {
+        envelope = (1 - attackRate) * envelope + attackRate * bassLevel;
+    } else {
+        envelope = (1 - releaseRate) * envelope;
+    }
+
+    // damping when bass is not loud
+    if (envelope < freqThreshold) {
+        envelope *= dampingFactor;
+    }
+
+    // calculate target scale based on envelope follower
+    targetScale = 1 + envelope / 256; // scaling factor can be adjusted
+
+    // lerp between currentScale and targetScale
+    currentScale += (targetScale - currentScale) * lerpFactor;
+
+    inner.scale.set(currentScale, currentScale, currentScale);
+
+    // lerp between currentScale and targetScale for the outer mesh
+    outerCurrentScale += (outerTargetScale - outerCurrentScale) * outerLerpFactor;
+    outer.scale.set(outerCurrentScale, outerCurrentScale, outerCurrentScale);
+
+    // rotation that automatically occurs
+    outer.rotation.z += 0.002;
+    outer.rotation.y += 0.002;
+
+    inner.rotation.z += 0.004;
+    inner.rotation.y += 0.004;
+
+    renderer.render(scene, camera);
+}
+
+function visualizerType2() {
+    console.log('gaming');
+}
 
 // create a scene
 const scene = new THREE.Scene();
@@ -81,76 +152,49 @@ const inner = new THREE.Mesh(blueGeo, blueMat);
 scene.add(outer);
 scene.add(inner);
 
-
-
-let prevLowerAvg = 0;
-const rateThreshold = 10; // threshold for rate of change
-
-
-// const threshold = 50; // adjustable value
-// const decayRate = 0.95; // adjustable value
-
 let currentScale = 1.0; // current scale of inner mesh
 let targetScale = 1.0; // scane we want to reach
 const lerpFactor = 0.1; //speed at which we lerp between currentScale and targetScale
 
-let freqThreshold = 200; // define a frequency threshold for lower frequencies
+let freqThreshold = 300; // define a frequency threshold for lower frequencies
+
+// variables for envelope follower
+let attackRate = 0.1;
+let releaseRate = 0.1;
+let envelope = 0;
+
+let dampingFactor = 0.95; // for smoother transitions
+
+let outerEnvelope = 0;
+
+let outerAttackRate = 0.1;
+let outerReleaseRate = 0.1;
+let outerDampingFactor = 0.95; // for smoother transitions
+let outerFreqThreshold = 300; // frequnecy threshold for higher frequencies
+
+const outerLerpFactor = 0.1; // speed at which we lerp between current and target scale for outer mesh
+let outerCurrentScale = 1.0; // current scale of outer mesh
 
 // animation loop
 const animate = () => {
     requestAnimationFrame(animate);
 
-    analyser.getByteFrequencyData(dataArray);
-
-    // segment dataArray for low and high frequencies
-    // const lowerHalfArray = dataArray.slice(0, (dataArray.length / 2) - 1);
-    const lowerHalfArray = dataArray.slice(0, 3);
-    const upperHalfArray = dataArray.slice(dataArray.length / 2, dataArray.length - 1);
-
-    // calculate average frequency values for low and high frequencies
-    const lowerAvg = lowerHalfArray.reduce((a, b) => a + b) / lowerHalfArray.length;
-    const upperAvg = upperHalfArray.reduce((a, b) => a + b) / upperHalfArray.length;
-
-    // apply the values to outer and inner meshes
-    const upperScale = 1 + upperAvg / 256;
-    outer.scale.set(upperScale, upperScale, upperScale);
-    // inner.scale.set(1 + lowerAvg / 256, 1 + lowerAvg / 256, 1 + lowerAvg / 256);
-
-    const rateOfChange = lowerAvg - prevLowerAvg;
-
-    // // if we pass rate of change threshold
-    // if (Math.abs(rateOfChange) > rateThreshold) {
-    //     targetScale = 1 + lowerAvg / 128;
-    //     console.log(rateOfChange);
-    // } else {
-    //     targetScale  = 1.0 // reset to original scale
-    // }
-
-    if (lowerAvg > freqThreshold) {
-        targetScale = 1 + lowerAvg / 128; // set a new target scale based on lowerAvg
-        console.log(`Threshold crossed: ${lowerAvg}`);
-    } else {
-        targetScale = 1.0; // reset to original scale
+    if (currentVisualizer) {
+        currentVisualizer();
     }
-
-    // lerp between currentScale and targetScale
-    currentScale += (targetScale - currentScale) * lerpFactor;
-
-    inner.scale.set(currentScale, currentScale, currentScale);
-
-    // prevLowerAvg = lowerAvg;
-
-    // rotation that automatically occurs
-    outer.rotation.z += 0.002;
-    outer.rotation.y += 0.002;
-
-    inner.rotation.z += 0.004;
-    inner.rotation.y += 0.004;
-
-    renderer.render(scene, camera);
 };
 
+document.addEventListener('keydown', function(event) {
+    if (event.key === '1') {
+      currentVisualizer = visualizerType1;
+    } else if (event.key === '2') {
+      currentVisualizer = visualizerType2;
+    }
+  });
+  
+
 // start the animation
+currentVisualizer = visualizerType1;
 animate();
 
 
