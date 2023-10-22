@@ -94,6 +94,8 @@ let currentScale = 1.0; // current scale of inner mesh
 let targetScale = 1.0; // scane we want to reach
 const lerpFactor = 0.1; //speed at which we lerp between currentScale and targetScale
 
+let freqThreshold = 200; // define a frequency threshold for lower frequencies
+
 // animation loop
 const animate = () => {
     requestAnimationFrame(animate);
@@ -101,8 +103,8 @@ const animate = () => {
     analyser.getByteFrequencyData(dataArray);
 
     // segment dataArray for low and high frequencies
-    const lowerHalfArray = dataArray.slice(0, (dataArray.length / 2) - 1);
-    // const lowerHalfArray = dataArray.slice(0, 5);
+    // const lowerHalfArray = dataArray.slice(0, (dataArray.length / 2) - 1);
+    const lowerHalfArray = dataArray.slice(0, 3);
     const upperHalfArray = dataArray.slice(dataArray.length / 2, dataArray.length - 1);
 
     // calculate average frequency values for low and high frequencies
@@ -116,12 +118,19 @@ const animate = () => {
 
     const rateOfChange = lowerAvg - prevLowerAvg;
 
-    // if we pass rate of change threshold
-    if (Math.abs(rateOfChange) > rateThreshold) {
-        targetScale = 1 + lowerAvg / 128;
-        console.log(rateOfChange);
+    // // if we pass rate of change threshold
+    // if (Math.abs(rateOfChange) > rateThreshold) {
+    //     targetScale = 1 + lowerAvg / 128;
+    //     console.log(rateOfChange);
+    // } else {
+    //     targetScale  = 1.0 // reset to original scale
+    // }
+
+    if (lowerAvg > freqThreshold) {
+        targetScale = 1 + lowerAvg / 128; // set a new target scale based on lowerAvg
+        console.log(`Threshold crossed: ${lowerAvg}`);
     } else {
-        targetScale  = 1.0 // reset to original scale
+        targetScale = 1.0; // reset to original scale
     }
 
     // lerp between currentScale and targetScale
@@ -129,8 +138,7 @@ const animate = () => {
 
     inner.scale.set(currentScale, currentScale, currentScale);
 
-    prevLowerAvg = lowerAvg;
-
+    // prevLowerAvg = lowerAvg;
 
     // rotation that automatically occurs
     outer.rotation.z += 0.002;
@@ -138,13 +146,6 @@ const animate = () => {
 
     inner.rotation.z += 0.004;
     inner.rotation.y += 0.004;
-
-
-    // analyser.getByteFrequencyData(dataArray);
-    // const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
-
-    // // cube.scale.set(1 + average / 256, 1 + average / 256, 1 + average / 256);
-    // outer.scale.set(1 + average / 256, 1 + average / 256, 1 + average / 256);
 
     renderer.render(scene, camera);
 };
